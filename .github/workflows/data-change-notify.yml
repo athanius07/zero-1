@@ -1,1 +1,49 @@
+name: Notify Power Automate on equipment data change
 
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - data/equipment.json
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Determine commit info
+        id: meta
+        run: |
+          echo "SHA=${GITHUB_SHA}" >> $GITHUB_OUTPUT
+          echo "BRANCH=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+
+      - name: Build Power Automate payload
+        id: payload
+        run: |
+          RAW_URL="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/data/equipment.json"
+          jq -n \
+            --arg repo "${GITHUB_REPOSITORY}" \
+            --arg branch "${GITHUB_REF_NAME}" \
+            --arg commit "${GITHUB_SHA}" \
+            --arg raw_url "$RAW_URL" \
+            '{
+              repo: $repo,
+              branch: $branch,
+              commit: $commit,
+              raw_url: $raw_url
+            }' > payload.json
+
+      - name: Send payload to Power Automate
+        env:
+          FLOW_URL: ${{ secrets.POWER_AUTOMATE_WEBHOOK_URL }}
+        run: |
+          curl -sS -X POST \
+            -H "Content-Type: application/json" \
+            --data-binary @payload.json \
+            "$FLOW_URL"
